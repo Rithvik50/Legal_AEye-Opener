@@ -10,5 +10,5 @@ Legal AEye-Opener is an AI legal advisor designed to inform users about laws and
 
 **Sources Used:**
 1. [BNS-IPC Law Mapping Comparison](https://bprd.nic.in/uploads/pdf/COMPARISON%20SUMMARY%20BNS%20to%20IPC%20.pdf)
-2. [BNS Laws - Detailed Sections](https://devgan.in/bns/section/1/)
+2. [BNS Laws - Detailed Sections](https://devgan.in/all_sections_bns.php)
 3. [IPC Laws - Detailed Sections](https://devgan.in/all_sections_ipc.php)
