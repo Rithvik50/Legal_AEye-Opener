@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Query Assistant</title>
+</head>
+<body>
+    <h1>Search Legal Sections</h1>
+    <form method="POST">
+        <label for="user_input">Enter your query:</label>
+        <input type="text" id="user_input" name="user_input" value="{{ user_input }}">
+        <button type="submit">Search</button>
+    </form>
+
+    {% if result %}
+        {% if result is string %}
+            <p>{{ result }}</p>
+        {% else %}
+            <h2>Top Matching Legal Sections</h2>
+            {% for item in result %}
+                <div style="margin-bottom: 20px;">
+                    <strong>🔹 Law Type:</strong> {{ item.law_type }}<br>
+                    <strong>📜 Section:</strong> {{ item.section_summary }}<br>
+                    <strong>🔗 Source:</strong> <a href="{{ item.source_url }}" target="_blank">{{ item.source_url }}</a><br>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endif %}
+</body>
+</html>
