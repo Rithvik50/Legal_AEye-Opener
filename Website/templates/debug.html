@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ChromaDB Debug</title>
+</head>
+<body>
+    <h1>ChromaDB - Stored Records</h1>
+
+    {% if records %}
+        <ul>
+            {% for record in records %}
+                <li>
+                    <strong>ID:</strong> {{ record.id }}<br>
+                    <strong>Document:</strong> {{ record.document }}<br>
+                    <strong>Metadata:</strong>
+                    <ul>
+                        {% for key, value in record.metadata.items() %}
+                            <li><strong>{{ key }}:</strong> {{ value }}</li>
+                        {% endfor %}
+                    </ul>
+                    <hr>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No records found in ChromaDB.</p>
+    {% endif %}
+</body>
+</html>
