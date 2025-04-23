@@ -8,4 +8,4 @@ Legal AEye-Opener is an AI legal advisor designed to inform users about laws and
 - **Legal Information at Your Fingertips**: Users can easily access important laws, their definitions, and implications. Users can also request the procedure on dealing with a certain crime.
 
 **Sources Used:**
-1. [BNS Laws - Chapters](https://devgan.in/bns/)
+[BNS Laws - Chapters](https://devgan.in/bns/)
