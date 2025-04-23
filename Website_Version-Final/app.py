@@ -23,17 +23,18 @@ collection = chroma_client.get_or_create_collection(name="bns_laws")
 # Initialize LangChain Groq LLM
 groq_llm = GroqLLM(groq_api_key=groq_api_key)
 
-def expand_query_legally(query):
-    expand_prompt = f"""
-Rephrase the following user complaint in legal terms, adding any synonyms or formal legal terminology:
-
-"{query}"
-    """
+def rephrase_with_llm(query):
     try:
-        return groq_llm.invoke(expand_prompt)
+        rephrase_prompt = f"""Rephrase the following user question about Indian laws into a more clear and concise legal query while preserving its meaning. Only return the improved query, no extra text.
+
+Original Query:
+{query}"""
+        return groq_llm.invoke(rephrase_prompt).strip()
     except Exception as e:
-        print(f"❌ Error expanding query: {e}")
-        return query  # Fallback to original if expansion fails
+        print(f"Query rephrase error: {e}")
+        return query  # fallback to original if rephrasing fails
+
+
 
 
 def generate_response_with_groq(query, context_docs, chat_history=[]):
@@ -87,9 +88,10 @@ def home():
             session['chat_history'] = []
             return render_template('index.html', result=[], user_input="", chat_history=[])
 
-        user_input = request.form['user_input']
+        original_query = request.form['user_input']
+        user_input = original_query.strip()
 
-        if not user_input.strip():
+        if not user_input:
             result = [{
                 "law_type": "Input Error",
                 "section_summary": "⚠️ Please enter a query in the text box.",
@@ -98,8 +100,8 @@ def home():
             }]
             return render_template('index.html', result=result, user_input=user_input, chat_history=session['chat_history'])
 
-        # Normalize "till section X from Y"
-        user_input = re.sub(
+        # Do not rephrase yet, keep original query for now
+        normalized_query = re.sub(
             r'till\s+section\s*(\d+)\s*from\s+(?:section\s*)?(\d+)',
             r'from section \2 to section \1',
             user_input,
@@ -111,6 +113,7 @@ def home():
         extracted_sections = set()
         invalid_sections = set()
 
+        # Parse from original query (before rephrasing)
         combined_range_matches = re.findall(
             r'(?:from\s+section\s*(\d+)\s*(?:to|till)\s*section?\s*(\d+))|(?:till\s+section\s*(\d+)\s*from\s+section\s*(\d+))',
             user_input,
@@ -189,16 +192,15 @@ def home():
                 "match_type": "Error"
             })
 
-        # ✅ NEW: If exact matches exist, send to Groq for summary
         if found_exact:
             context_docs = [meta.get('section_summary', '') for meta in found_exact if meta.get('section_summary')]
             total_context_length = sum(len(doc) for doc in context_docs)
 
             if total_context_length < 6000:
-                groq_answer = generate_response_with_groq(user_input, context_docs, session['chat_history'])
+                groq_answer = generate_response_with_groq(original_query, context_docs, session['chat_history'])
 
                 if not groq_answer.lower().startswith("❌"):
-                    formatted_results = []  # 👈 clear previous section-wise entries
+                    formatted_results = []
                     formatted_results.append({
                         "law_type": "Groq AI",
                         "section_summary": groq_answer.strip(),
@@ -209,7 +211,6 @@ def home():
                     print("Groq error skipped due to token limits.")
             else:
                 print("Skipping Groq call due to large context size.")
-                # fallback to showing section-wise results if context too large
                 for metadata in found_exact_sorted:
                     formatted_results.append({
                         "law_type": metadata.get('law_type', 'Unknown'),
@@ -218,11 +219,9 @@ def home():
                         "match_type": "Exact"
                     })
 
-
-
-        elif not extracted_sections:
-            # Semantic search fallback with legal synonym expansion
-            expanded_query = expand_query_legally(user_input)
+        else:
+            # No exact matches: use normalized query for semantic fallback
+            expanded_query = rephrase_with_llm(user_input)
             print(f"🔍 Expanded Query: {expanded_query}")
             query_embedding = model.encode(expanded_query).tolist()
             results = collection.query(query_embeddings=[query_embedding], n_results=15)
@@ -231,7 +230,7 @@ def home():
                 top_contexts = [doc for doc in results['documents'][0] if doc.strip()]
                 
                 if top_contexts:
-                    groq_answer = generate_response_with_groq(user_input, top_contexts, session['chat_history'])
+                    groq_answer = generate_response_with_groq(original_query, top_contexts, session['chat_history'])
 
                     formatted_results.append({
                         "law_type": "Groq AI",
@@ -277,21 +276,20 @@ def home():
 
         result = formatted_results
 
-        # Save to chat history
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         session['chat_history'].append({
-            "user_input": user_input,
+            "user_input": original_query,
             "response": result,
             "timestamp": timestamp
         })
         session.modified = True
 
-    # Convert Markdown to HTML
     for chat in session['chat_history']:
         for item in chat["response"]:
             item["section_summary"] = markdown(item["section_summary"])
 
     return render_template('index.html', result=result, user_input=user_input, chat_history=session['chat_history'])
+
 
 @app.route('/debug')
 def debug():
