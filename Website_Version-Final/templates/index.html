@@ -8,7 +8,7 @@
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            background-color: #f9f9f9;
+            background-color: #ffecb6;
             display: flex;
             flex-direction: column;
             height: 100vh;
@@ -133,15 +133,32 @@
         {% endfor %}
     </div>
 
-    <form method="POST">
-        <input type="text" id="user_input" name="user_input" placeholder="Ask your legal question..." value="{{ user_input }}" required>
-        <button type="submit">Send</button>
+    <form method="POST" id="chat-form">
+        <input type="text" id="user_input" name="user_input" placeholder="Ask your legal question..." value="{{ user_input }}">
+        <button type="submit" id="send-btn">Send</button>
         <button type="submit" name="clear" value="true" class="clear-btn">Clear</button>
     </form>
-
+    
     <script>
+        const form = document.getElementById("chat-form");
+        const input = document.getElementById("user_input");
+        const sendBtn = document.getElementById("send-btn");
+    
+        form.addEventListener("submit", function (e) {
+            // Check which button was clicked
+            if (document.activeElement === sendBtn) {
+                // Enforce required only when Send is clicked
+                if (!input.value.trim()) {
+                    e.preventDefault(); // prevent form submission
+                    input.focus();
+                }
+            }
+        });
+    
+        // Scroll to bottom on load
         const chatContainer = document.getElementById("chat");
         chatContainer.scrollTop = chatContainer.scrollHeight;
     </script>
+    
 </body>
 </html>
