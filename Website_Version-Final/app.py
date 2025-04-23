@@ -23,6 +23,19 @@ collection = chroma_client.get_or_create_collection(name="bns_laws")
 # Initialize LangChain Groq LLM
 groq_llm = GroqLLM(groq_api_key=groq_api_key)
 
+def expand_query_legally(query):
+    expand_prompt = f"""
+Rephrase the following user complaint in legal terms, adding any synonyms or formal legal terminology:
+
+"{query}"
+    """
+    try:
+        return groq_llm.invoke(expand_prompt)
+    except Exception as e:
+        print(f"❌ Error expanding query: {e}")
+        return query  # Fallback to original if expansion fails
+
+
 def generate_response_with_groq(query, context_docs, chat_history=[]):
     context_text = "\n\n".join(context_docs)
 
@@ -34,8 +47,9 @@ def generate_response_with_groq(query, context_docs, chat_history=[]):
 
     prompt_template = PromptTemplate.from_template(
         """You are a helpful legal assistant.
-Use the following conversation history and legal context to answer the user's question.
-If the context is not sufficient, say so.
+Use the following conversation history and BNS legal context to answer the user's question.
+If the context is not sufficient, say so. BNS is the new legal code and is said to replace Indian Penal Code or IPC
+so do not mention anything like IPC or Indian Penal Code in your response.
 
 Conversation History:
 {history}
@@ -207,8 +221,10 @@ def home():
 
 
         elif not extracted_sections:
-            # Semantic search fallback
-            query_embedding = model.encode(user_input).tolist()
+            # Semantic search fallback with legal synonym expansion
+            expanded_query = expand_query_legally(user_input)
+            print(f"🔍 Expanded Query: {expanded_query}")
+            query_embedding = model.encode(expanded_query).tolist()
             results = collection.query(query_embeddings=[query_embedding], n_results=15)
 
             if results and results.get('documents') and results['documents'][0]:
