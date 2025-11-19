@@ -10,5 +10,10 @@ Legal AEye-Opener is an AI legal advisor designed to inform users about laws and
 **Architecture Diagram:**
 ![LegalAEye-Opener Architecture Diagram](LegalAEye_Architecture.png "Legal AEye-Opener Architecture Diagram")
 
+**Execution**
+'''bash
+python3 app.py
+'''
+
 **Sources Used:**
 [BNS Laws - Chapters](https://devgan.in/bns/)
