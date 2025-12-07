@@ -8,17 +8,17 @@ An AI-powered legal advisory chatbot that provides intelligent guidance on India
 
 ## 📋 Table of Contents
 
-- [Overview]
-- [Key Features]
-- [Tech Stack]
-- [Architecture]
-- [Installation]
-- [Usage]
-- [How It Works]
-- [API Configuration]
-- [Project Structure]
-- [Contributing]
-- [License]
+- Overview
+- Key Features
+- Tech Stack
+- Architecture
+- Installation
+- Usage
+- How It Works
+- API Configuration
+- Project Structure
+- Contributing
+- License
 
 ---
 
