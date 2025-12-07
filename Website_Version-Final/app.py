@@ -10,7 +10,7 @@ from llms.groq_llm import GroqLLM
 from langchain_core.prompts import PromptTemplate
 
 # Set Groq API key
-groq_api_key = os.getenv("GROQ_API_KEY", "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")
+groq_api_key = os.getenv("GROQ_API_KEY", "your_groq_api_key")
 
 app = Flask(__name__)
 app.secret_key = 'your_super_secret_key'
@@ -307,3 +307,4 @@ def debug():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
