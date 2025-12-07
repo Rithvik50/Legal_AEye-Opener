@@ -1,0 +1,11 @@
+flask
+sentence-transformers
+chromadb
+langchain
+langchain-core
+groq
+beautifulsoup4
+requests
+faiss-cpu
+transformers
+markdown

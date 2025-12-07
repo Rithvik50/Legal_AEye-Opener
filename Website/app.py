@@ -1,61 +1,107 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, session
 from sentence_transformers import SentenceTransformer
 import chromadb
 import re
-from groq import Groq
 import os
+from datetime import datetime
+from markdown import markdown
 
-# Set your Groq API key here or through an environment variable
-groq_api_key = os.getenv("GROQ_API_KEY", "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")
-groq_client = Groq(api_key=groq_api_key)
+from llms.groq_llm import GroqLLM
+from langchain_core.prompts import PromptTemplate
+
+# Set Groq API key
+groq_api_key = os.getenv("GROQ_API_KEY", "your_groq_api_key")
 
 app = Flask(__name__)
+app.secret_key = 'your_super_secret_key'
 
 # Load model and connect to ChromaDB
 model = SentenceTransformer("all-MiniLM-L6-v2")
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = chroma_client.get_or_create_collection(name="bns_laws")
 
-# --- Groq helper function ---
-def generate_response_with_groq(query, context_docs):
+# Initialize LangChain Groq LLM
+groq_llm = GroqLLM(groq_api_key=groq_api_key)
+
+def rephrase_with_llm(query):
+    try:
+        rephrase_prompt = f"""Rephrase the following user question about Indian laws into a more clear and concise legal query while preserving its meaning. Only return the improved query, no extra text.
+
+Original Query:
+{query}"""
+        return groq_llm.invoke(rephrase_prompt).strip()
+    except Exception as e:
+        print(f"Query rephrase error: {e}")
+        return query  # fallback to original if rephrasing fails
+
+
+
+
+def generate_response_with_groq(query, context_docs, chat_history=[]):
     context_text = "\n\n".join(context_docs)
 
-    system_prompt = (
-        "You are a helpful legal assistant. Use the following legal context to answer the user’s question accurately. "
-        "If the context is not sufficient, say so."
+    history_context = ""
+    for turn in chat_history[-5:]:
+        response_summary = turn['response'][0].get('section_summary', '')
+        if response_summary and response_summary != "❌ No matches found at all.":
+            history_context += f"User: {turn['user_input']}\nAssistant: {response_summary}\n"
+
+    prompt_template = PromptTemplate.from_template(
+        """You are a helpful legal assistant.
+Use the following conversation history and BNS legal context to answer the user's question.
+If the context is not sufficient, say so. BNS is the new legal code and is said to replace Indian Penal Code or IPC
+so do not mention anything like IPC or Indian Penal Code in your response.
+
+Conversation History:
+{history}
+
+Legal Context:
+{context}
+
+Query:
+{question}
+"""
+    )
+
+    prompt = prompt_template.format(
+        history=history_context.strip(),
+        context=context_text,
+        question=query
     )
 
     try:
-        response = groq_client.chat.completions.create(
-            model="llama3-70b-8192",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Context:\n{context_text}\n\nQuery:\n{query}"}
-            ]
-        )
-        return response.choices[0].message.content.strip()
+        return groq_llm.invoke(prompt)
     except Exception as e:
-        return f"❌ Groq API Error: {str(e)}"
+        return f"❌ Groq LangChain API Error: {str(e)}"
+
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
-    result = ""
+    result = []
     user_input = ""
 
+    if 'chat_history' not in session:
+        session['chat_history'] = []
+
     if request.method == 'POST':
-        user_input = request.form['user_input']
-        
-        if not user_input.strip():
+        if request.form.get('clear'):
+            session['chat_history'] = []
+            return render_template('index.html', result=[], user_input="", chat_history=[])
+
+        original_query = request.form['user_input']
+        user_input = original_query.strip()
+
+        if not user_input:
             result = [{
                 "law_type": "Input Error",
                 "section_summary": "⚠️ Please enter a query in the text box.",
                 "source_url": "#",
                 "match_type": "Error"
             }]
-            return render_template('index.html', result=result, user_input=user_input)
+            return render_template('index.html', result=result, user_input=user_input, chat_history=session['chat_history'])
 
-        # Normalize "till section" to "from section"
-        user_input = re.sub(
+        # Do not rephrase yet, keep original query for now
+        normalized_query = re.sub(
             r'till\s+section\s*(\d+)\s*from\s+(?:section\s*)?(\d+)',
             r'from section \2 to section \1',
             user_input,
@@ -67,6 +113,7 @@ def home():
         extracted_sections = set()
         invalid_sections = set()
 
+        # Parse from original query (before rephrasing)
         combined_range_matches = re.findall(
             r'(?:from\s+section\s*(\d+)\s*(?:to|till)\s*section?\s*(\d+))|(?:till\s+section\s*(\d+)\s*from\s+section\s*(\d+))',
             user_input,
@@ -145,29 +192,79 @@ def home():
                 "match_type": "Error"
             })
 
-        if not found_exact and not extracted_sections:
-            query_embedding = model.encode(user_input).tolist()
-            results = collection.query(query_embeddings=[query_embedding], n_results=5)
+        if found_exact:
+            context_docs = [meta.get('section_summary', '') for meta in found_exact if meta.get('section_summary')]
+            total_context_length = sum(len(doc) for doc in context_docs)
 
-            if results and results.get('documents') and results['documents'][0]:
-                top_docs = results['documents'][0]
-                top_contexts = [doc for doc in top_docs]
+            if total_context_length < 6000:
+                groq_answer = generate_response_with_groq(original_query, context_docs, session['chat_history'])
 
-                groq_answer = generate_response_with_groq(user_input, top_contexts)
-
-                formatted_results.append({
-                    "law_type": "Groq AI",
-                    "section_summary": groq_answer,
-                    "source_url": "#",
-                    "match_type": "Generated"
-                })
-
-                for doc, metadata in zip(top_docs, results['metadatas'][0]):
+                if not groq_answer.lower().startswith("❌"):
+                    formatted_results = []
+                    formatted_results.append({
+                        "law_type": "Groq AI",
+                        "section_summary": groq_answer.strip(),
+                        "source_url": "#",
+                        "match_type": "Generated"
+                    })
+                else:
+                    print("Groq error skipped due to token limits.")
+            else:
+                print("Skipping Groq call due to large context size.")
+                for metadata in found_exact_sorted:
                     formatted_results.append({
                         "law_type": metadata.get('law_type', 'Unknown'),
                         "section_summary": metadata.get('section_summary', 'No summary available'),
                         "source_url": metadata.get('source_url', 'No source available'),
-                        "match_type": "Source"
+                        "match_type": "Exact"
+                    })
+
+        else:
+            # No exact matches: use normalized query for semantic fallback
+            expanded_query = rephrase_with_llm(user_input)
+            print(f"🔍 Expanded Query: {expanded_query}")
+            query_embedding = model.encode(expanded_query).tolist()
+            results = collection.query(query_embeddings=[query_embedding], n_results=15)
+
+            if results and results.get('documents') and results['documents'][0]:
+                top_contexts = [doc for doc in results['documents'][0] if doc.strip()]
+                
+                if top_contexts:
+                    groq_answer = generate_response_with_groq(original_query, top_contexts, session['chat_history'])
+
+                    formatted_results.append({
+                        "law_type": "Groq AI",
+                        "section_summary": groq_answer.strip(),
+                        "source_url": "#",
+                        "match_type": "Generated"
+                    })
+
+                    source_links = []
+                    for metadata in results.get('metadatas', [[]])[0]:
+                        url = metadata.get('source_url', '')
+                        if url and url != '#':
+                            source_links.append(url)
+
+                    if source_links:
+                        seen = set()
+                        unique_links = []
+                        for link in source_links:
+                            if link not in seen:
+                                seen.add(link)
+                                unique_links.append(link)
+
+                        formatted_results.append({
+                            "law_type": "Sources",
+                            "section_summary": "🔗 Sources used for this response:<br>" + "<br>".join(f"- <a href='{link}' target='_blank'>{link}</a>" for link in unique_links),
+                            "source_url": "#",
+                            "match_type": "Info"
+                        })
+                else:
+                    formatted_results.append({
+                        "law_type": "None",
+                        "section_summary": "❌ No relevant legal documents were found.",
+                        "source_url": "#",
+                        "match_type": "Error"
                     })
             else:
                 formatted_results.append({
@@ -179,7 +276,20 @@ def home():
 
         result = formatted_results
 
-    return render_template('index.html', result=result, user_input=user_input)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        session['chat_history'].append({
+            "user_input": original_query,
+            "response": result,
+            "timestamp": timestamp
+        })
+        session.modified = True
+
+    for chat in session['chat_history']:
+        for item in chat["response"]:
+            item["section_summary"] = markdown(item["section_summary"])
+
+    return render_template('index.html', result=result, user_input=user_input, chat_history=session['chat_history'])
+
 
 @app.route('/debug')
 def debug():
@@ -197,3 +307,4 @@ def debug():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
